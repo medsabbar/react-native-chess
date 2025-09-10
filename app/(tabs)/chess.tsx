@@ -3,6 +3,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { playCaptureSound, playMoveSound } from "@/utils/soundUtils";
 import { Chess } from "chess.js";
+import { router, useLocalSearchParams } from "expo-router";
 import React, {
   useCallback,
   useEffect,
@@ -26,12 +27,17 @@ const SKILL_BY_DIFFICULTY: Record<"easy" | "medium" | "hard", number> = {
 };
 
 export default function ChessScreen() {
+  const params = useLocalSearchParams<{
+    gameMode?: string;
+    difficulty?: string;
+  }>();
+  
+  const gameMode = (params.gameMode as "human-vs-ai" | "human-vs-human") || "human-vs-ai";
+  const initialDifficulty = (params.difficulty as "easy" | "medium" | "hard") || "medium";
+  
   const [game, setGame] = useState(() => new Chess());
   const [isAITurn, setIsAITurn] = useState(false);
-  const gameMode: "human-vs-ai" = "human-vs-ai";
-  const [aiDifficulty, setAiDifficulty] = useState<"easy" | "medium" | "hard">(
-    "medium"
-  );
+  const [aiDifficulty, setAiDifficulty] = useState<"easy" | "medium" | "hard">(initialDifficulty);
 
   // Stockfish via hidden WebView
   const webViewRef = useRef<WebView | null>(null);
@@ -68,45 +74,47 @@ export default function ChessScreen() {
     if (game.isCheckmate()) return "Checkmate";
     if (game.isStalemate()) return "Stalemate";
     if (game.isDraw()) return "Draw";
-    if (isAITurn) return "AI is thinking...";
+    if (gameMode === "human-vs-ai" && isAITurn) return "AI is thinking...";
     return `${game.turn() === "w" ? "White" : "Black"} to move`;
-  }, [game, isAITurn]);
+  }, [game, isAITurn, gameMode]);
 
   const onMove = useCallback(
     (from: string, to: string) => {
       // Don't allow moves during AI turn
-      if (isAITurn) {
+      if (gameMode === "human-vs-ai" && isAITurn) {
         console.log("Blocking move - AI turn in progress");
         return false;
       }
 
       console.log(
-        "Human move attempt:",
+        "Move attempt:",
         from,
         "to",
         to,
         "current turn:",
-        game.turn()
+        game.turn(),
+        "game mode:",
+        gameMode
       );
       const next = new Chess(game.fen());
       const result = next.move({ from, to, promotion: "q" as any });
       if (result) {
-        console.log("Human move successful, new turn:", next.turn());
+        console.log("Move successful, new turn:", next.turn());
         setGame(next);
 
-        // If it's now black's turn, trigger AI move
-        if (next.turn() === "b" && !next.isGameOver()) {
+        // If playing against AI and it's now black's turn, trigger AI move
+        if (gameMode === "human-vs-ai" && next.turn() === "b" && !next.isGameOver()) {
           console.log("Setting AI turn to true - black to move");
           setIsAITurn(true);
         }
 
         return true;
       } else {
-        console.log("Human move failed");
+        console.log("Move failed");
       }
       return false;
     },
-    [game, isAITurn]
+    [game, isAITurn, gameMode]
   );
 
   // AI move logic using Stockfish
@@ -172,7 +180,7 @@ export default function ChessScreen() {
       gameOver: game.isGameOver(),
       turn: game.turn(),
     });
-    if (isAITurn && !game.isGameOver()) {
+    if (gameMode === "human-vs-ai" && isAITurn && !game.isGameOver()) {
       console.log("Setting timeout for AI move");
       const timer = setTimeout(() => {
         makeAIMove();
@@ -180,7 +188,7 @@ export default function ChessScreen() {
 
       return () => clearTimeout(timer);
     }
-  }, [isAITurn, game, makeAIMove]);
+  }, [isAITurn, game, makeAIMove, gameMode]);
 
   // Check if AI should move on game state change (for initial state or after reset)
   useEffect(() => {
@@ -191,13 +199,22 @@ export default function ChessScreen() {
       isGameOver: game.isGameOver(),
       fen: game.fen(),
     });
-    if (game.turn() === "b" && !isAITurn && !game.isGameOver()) {
+    if (gameMode === "human-vs-ai" && game.turn() === "b" && !isAITurn && !game.isGameOver()) {
       console.log("Game is black's turn, setting AI turn");
       setIsAITurn(true);
     }
-  }, [game, isAITurn]);
+  }, [game, isAITurn, gameMode]);
 
-  // Reset control removed from UI
+  const goBackToWelcome = useCallback(() => {
+    router.push("/");
+  }, []);
+
+  const resetGame = useCallback(() => {
+    const newGame = new Chess();
+    setGame(newGame);
+    setIsAITurn(false);
+    Alert.alert("Game Reset", "A new game has been started");
+  }, []);
 
   const changeDifficulty = useCallback(
     (difficulty: "easy" | "medium" | "hard") => {
@@ -212,6 +229,26 @@ export default function ChessScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      {/* Header with back button and game info */}
+      <View style={styles.header}>
+        <Pressable onPress={goBackToWelcome} style={styles.backButton}>
+          <ThemedText style={styles.backButtonText}>← Back</ThemedText>
+        </Pressable>
+        <View style={styles.headerInfo}>
+          <ThemedText style={styles.gameModeText}>
+            {gameMode === "human-vs-ai" ? "vs AI" : "Local Game"}
+          </ThemedText>
+          {gameMode === "human-vs-ai" && (
+            <ThemedText style={styles.difficultyText}>
+              {aiDifficulty.charAt(0).toUpperCase() + aiDifficulty.slice(1)}
+            </ThemedText>
+          )}
+        </View>
+        <Pressable onPress={resetGame} style={styles.resetButton}>
+          <ThemedText style={styles.resetButtonText}>Reset</ThemedText>
+        </Pressable>
+      </View>
+
       <View
         style={{
           flex: 1,
@@ -224,13 +261,14 @@ export default function ChessScreen() {
           fen={fen}
           size={boardSize}
           onMove={onMove}
-          isPlayerTurn={!isAITurn}
+          isPlayerTurn={gameMode === "human-vs-human" || !isAITurn}
           playerColor="w"
         />
         <View style={{ height: 12 }} />
-        <ThemedText>{statusText}</ThemedText>
-        {/* Show difficulty selector only before any move has been made in current game */}
-        {fen === new Chess().fen() && (
+        <ThemedText style={styles.statusText}>{statusText}</ThemedText>
+        
+        {/* Show difficulty selector only for AI games and before any move has been made */}
+        {gameMode === "human-vs-ai" && fen === new Chess().fen() && (
           <View style={styles.difficultyRow}>
             <ThemedText style={styles.difficultyLabel}>
               AI Difficulty
@@ -291,61 +329,64 @@ export default function ChessScreen() {
           </View>
         )}
       </View>
-      {/* Hidden Stockfish WebView */}
-      <WebView
-        ref={(r) => {
-          webViewRef.current = r;
-        }}
-        originWhitelist={["*"]}
-        source={{ html: stockfishHtml }}
-        onLoadEnd={() => {
-          webViewRef.current?.injectJavaScript(
-            "window.SF_SEND && (SF_SEND('uci'), SF_SEND('isready')); true;"
-          );
-        }}
-        onMessage={async (event) => {
-          const data = String(event.nativeEvent.data || "");
-          if (data.includes("uciok")) {
+      
+      {/* Hidden Stockfish WebView - only render for AI games */}
+      {gameMode === "human-vs-ai" && (
+        <WebView
+          ref={(r) => {
+            webViewRef.current = r;
+          }}
+          originWhitelist={["*"]}
+          source={{ html: stockfishHtml }}
+          onLoadEnd={() => {
             webViewRef.current?.injectJavaScript(
-              "window.SF_SEND && SF_SEND('isready'); true;"
+              "window.SF_SEND && (SF_SEND('uci'), SF_SEND('isready')); true;"
             );
-          }
-          // readyok indicates the engine is ready
-          if (data.startsWith("bestmove")) {
-            const parts = data.split(/\s+/);
-            const moveStr = parts[1] || "";
-            if (moveStr.length >= 4) {
-              const from = moveStr.slice(0, 2);
-              const to = moveStr.slice(2, 4);
-              const promo =
-                moveStr.length > 4 ? moveStr.slice(4, 5) : undefined;
-              const next = new Chess(game.fen());
-              const pieceAtTarget = next.get(to as any);
-              const res = next.move({
-                from,
-                to,
-                promotion: (promo as any) || ("q" as any),
-              });
-              if (res) {
-                setGame(next);
-                setIsAITurn(false);
-                if (pieceAtTarget) {
-                  await playCaptureSound();
-                } else {
-                  await playMoveSound();
+          }}
+          onMessage={async (event) => {
+            const data = String(event.nativeEvent.data || "");
+            if (data.includes("uciok")) {
+              webViewRef.current?.injectJavaScript(
+                "window.SF_SEND && SF_SEND('isready'); true;"
+              );
+            }
+            // readyok indicates the engine is ready
+            if (data.startsWith("bestmove")) {
+              const parts = data.split(/\s+/);
+              const moveStr = parts[1] || "";
+              if (moveStr.length >= 4) {
+                const from = moveStr.slice(0, 2);
+                const to = moveStr.slice(2, 4);
+                const promo =
+                  moveStr.length > 4 ? moveStr.slice(4, 5) : undefined;
+                const next = new Chess(game.fen());
+                const pieceAtTarget = next.get(to as any);
+                const res = next.move({
+                  from,
+                  to,
+                  promotion: (promo as any) || ("q" as any),
+                });
+                if (res) {
+                  setGame(next);
+                  setIsAITurn(false);
+                  if (pieceAtTarget) {
+                    await playCaptureSound();
+                  } else {
+                    await playMoveSound();
+                  }
                 }
               }
+              awaitingBestMoveRef.current = false;
+              const anyRef: any = webViewRef.current;
+              if (anyRef && anyRef._sfTimeout) clearTimeout(anyRef._sfTimeout);
             }
-            awaitingBestMoveRef.current = false;
-            const anyRef: any = webViewRef.current;
-            if (anyRef && anyRef._sfTimeout) clearTimeout(anyRef._sfTimeout);
-          }
-        }}
-        onError={(e) => {
-          console.log("WebView error", e.nativeEvent);
-        }}
-        style={{ width: 0, height: 0, opacity: 0 }}
-      />
+          }}
+          onError={(e) => {
+            console.log("WebView error", e.nativeEvent);
+          }}
+          style={{ width: 0, height: 0, opacity: 0 }}
+        />
+      )}
     </ThemedView>
   );
 }
@@ -356,6 +397,57 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 16,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  backButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: "#f0f0f0",
+    borderRadius: 6,
+    minWidth: 60,
+  },
+  backButtonText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#007AFF",
+  },
+  headerInfo: {
+    alignItems: "center",
+    flex: 1,
+  },
+  gameModeText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  difficultyText: {
+    fontSize: 12,
+    opacity: 0.7,
+  },
+  resetButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: "#FF3B30",
+    borderRadius: 6,
+    minWidth: 60,
+    alignItems: "center",
+  },
+  resetButtonText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#fff",
+  },
+  statusText: {
+    fontSize: 16,
+    fontWeight: "500",
+    textAlign: "center",
   },
   difficultyRow: {
     alignSelf: "stretch",
