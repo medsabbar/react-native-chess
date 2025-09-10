@@ -10,7 +10,7 @@ import {
   useImage,
 } from "@shopify/react-native-skia";
 import { Chess, Square } from "chess.js";
-import React, { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 
 type ChessBoardProps = {
@@ -129,7 +129,12 @@ export default function ChessBoard(props: ChessBoardProps) {
 
       // In human vs AI mode, only allow moves for the player's color
       // In human vs human mode, allow moves for both colors based on turn
-      if (!isPlayerTurn || (playerColor && piece.color !== playerColor)) {
+      if (!isPlayerTurn) {
+        return [] as string[];
+      }
+      
+      // If playerColor is specified (human vs AI), only allow moves for that color
+      if (playerColor && piece.color !== playerColor) {
         return [] as string[];
       }
 

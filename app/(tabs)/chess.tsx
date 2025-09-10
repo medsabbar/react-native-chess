@@ -4,7 +4,7 @@ import { ThemedView } from "@/components/ThemedView";
 import { playCaptureSound, playMoveSound } from "@/utils/soundUtils";
 import { Chess } from "chess.js";
 import { router, useLocalSearchParams } from "expo-router";
-import React, {
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -206,7 +206,7 @@ export default function ChessScreen() {
   }, [game, isAITurn, gameMode]);
 
   const goBackToWelcome = useCallback(() => {
-    router.back();
+    router.replace("/");
   }, []);
 
   const resetGame = useCallback(() => {
