@@ -206,7 +206,7 @@ export default function ChessScreen() {
   }, [game, isAITurn, gameMode]);
 
   const goBackToWelcome = useCallback(() => {
-    router.push("/");
+    router.back();
   }, []);
 
   const resetGame = useCallback(() => {
@@ -262,7 +262,7 @@ export default function ChessScreen() {
           size={boardSize}
           onMove={onMove}
           isPlayerTurn={gameMode === "human-vs-human" || !isAITurn}
-          playerColor="w"
+          playerColor={gameMode === "human-vs-human" ? undefined : "w"}
         />
         <View style={{ height: 12 }} />
         <ThemedText style={styles.statusText}>{statusText}</ThemedText>
