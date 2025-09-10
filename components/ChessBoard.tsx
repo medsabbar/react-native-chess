@@ -128,7 +128,8 @@ export default function ChessBoard(props: ChessBoardProps) {
       if (piece.color !== game.turn()) return [] as string[];
 
       // In human vs AI mode, only allow moves for the player's color
-      if (!isPlayerTurn || piece.color !== playerColor) {
+      // In human vs human mode, allow moves for both colors based on turn
+      if (!isPlayerTurn || (playerColor && piece.color !== playerColor)) {
         return [] as string[];
       }
 
