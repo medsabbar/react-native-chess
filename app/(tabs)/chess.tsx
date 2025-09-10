@@ -4,7 +4,7 @@ import { ThemedView } from "@/components/ThemedView";
 import { playCaptureSound, playMoveSound } from "@/utils/soundUtils";
 import { Chess } from "chess.js";
 import { router, useLocalSearchParams } from "expo-router";
-import React, {
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -37,6 +37,8 @@ export default function ChessScreen() {
   
   const [game, setGame] = useState(() => new Chess());
   const [isAITurn, setIsAITurn] = useState(false);
+  // Track local player's turn when in human-vs-human mode ("w" or "b")
+  const [localTurn, setLocalTurn] = useState<'w' | 'b'>('w');
   const [aiDifficulty, setAiDifficulty] = useState<"easy" | "medium" | "hard">(initialDifficulty);
 
   // Stockfish via hidden WebView
@@ -86,6 +88,14 @@ export default function ChessScreen() {
         return false;
       }
 
+      // In human vs human mode enforce alternating turns explicitly (UI highlights already via game.turn())
+      if (gameMode === 'human-vs-human') {
+        if (game.turn() !== localTurn) {
+          console.log('Not this local side\'s turn');
+          return false;
+        }
+      }
+
       console.log(
         "Move attempt:",
         from,
@@ -108,13 +118,17 @@ export default function ChessScreen() {
           setIsAITurn(true);
         }
 
+        if (gameMode === 'human-vs-human') {
+          setLocalTurn(next.turn());
+        }
+
         return true;
       } else {
         console.log("Move failed");
       }
       return false;
     },
-    [game, isAITurn, gameMode]
+  [game, isAITurn, gameMode, localTurn]
   );
 
   // AI move logic using Stockfish
@@ -206,13 +220,14 @@ export default function ChessScreen() {
   }, [game, isAITurn, gameMode]);
 
   const goBackToWelcome = useCallback(() => {
-    router.back();
+    router.replace("/");
   }, []);
 
   const resetGame = useCallback(() => {
     const newGame = new Chess();
     setGame(newGame);
-    setIsAITurn(false);
+  setIsAITurn(false);
+  setLocalTurn('w');
     Alert.alert("Game Reset", "A new game has been started");
   }, []);
 
@@ -261,8 +276,9 @@ export default function ChessScreen() {
           fen={fen}
           size={boardSize}
           onMove={onMove}
-          isPlayerTurn={gameMode === "human-vs-human" || !isAITurn}
-          playerColor={gameMode === "human-vs-human" ? undefined : "w"}
+          // In human vs human always allow taps (turn validation handled in onMove + computeLegalTargets)
+          isPlayerTurn={gameMode === 'human-vs-human' ? true : !isAITurn}
+          playerColor={gameMode === 'human-vs-human' ? undefined : 'w'}
         />
         <View style={{ height: 12 }} />
         <ThemedText style={styles.statusText}>{statusText}</ThemedText>
